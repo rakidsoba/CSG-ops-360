@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { api, setToken, hasPermission } from '../services/api';
+import { api, setTokens, hasPermission, getToken } from '../services/api';
 
 interface User {
   id: string;
@@ -27,32 +27,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
+      if (!getToken()) {
+        setUser(null);
+        return;
+      }
       const me = await api.me();
       setUser(me);
     } catch {
       setUser(null);
-      setToken(null);
+      setTokens(null, null);
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('csg_token');
-    if (token) refresh();
+    if (getToken()) refresh();
     else setLoading(false);
   }, [refresh]);
 
   const login = async (email: string, password: string) => {
-    const res = await api.login(email, password);
-    setToken(res.token);
+    await api.login(email, password);
     await refresh();
   };
 
   const logout = () => {
-    setToken(null);
-    setUser(null);
-    window.location.href = '/login';
+    api.logout().finally(() => {
+      setUser(null);
+      window.location.href = '/login';
+    });
   };
 
   const can = (code: string) => {

@@ -1,0 +1,8 @@
+{
+  "appId": "ug.charteredsecurity.ops360",
+  "appName": "CharteredOps 360",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https"
+  }
+}

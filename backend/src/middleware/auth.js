@@ -17,6 +17,9 @@ async function authenticate(req, res, next) {
     }
     return res.status(401).json({ error: 'Invalid token', code: 'INVALID_TOKEN' });
   }
+  if (payload.type && payload.type !== 'access') {
+    return res.status(401).json({ error: 'Invalid token type', code: 'INVALID_TOKEN' });
+  }
 
   try {
     const { rows } = await db.query(

@@ -3,73 +3,67 @@
 **Security Workforce Operations Management Platform**  
 Chartered Security (Kampala, Uganda)
 
-Mobile-first PWA (Android + iOS + web). Company colours `#380101` · `#d50000` · `#ffd702`. Skeleton loaders. Super Admin has full table control from the UI.
+Mobile-first PWA + Capacitor (Android / iOS). Colours `#380101` · `#d50000` · `#ffd702`.
 
-## What is included
+## Auth — refresh token rotation
 
-### Foundation
-- JWT auth, live permission resolution, account lockout, immutable audit
-- Guards, sites, shifts, deployments, users, roles
-- Full data import from operational seed (`npm run import-data`)
+- **Access token**: short-lived JWT (`JWT_EXPIRES_IN`, default **15m**), type `access`
+- **Refresh token**: opaque random string, stored **hashed** in `refresh_tokens`, default **14 days**
+- On `/api/auth/refresh`: old refresh is revoked, new access + refresh issued (rotation)
+- Reuse of a revoked refresh token → **all sessions for that user revoked** (theft detection)
+- Frontend stores both tokens; on 401 automatically refreshes once (single-flight), then retries
 
-### Field attendance (Phase 2)
-- Deployment-driven roster
-- Exception-only check-in (mobile optimised)
-- **Live camera only** (no gallery) → stored as file metadata, binary on disk
-- GPS + **geofence enforcement** when site coordinates exist
-- Offline IndexedDB queue + sync (`captured_at` vs `synced_at`)
-- Controller **confirm/lock** and **correction request / approve / reject**
+```http
+POST /api/auth/login     → { accessToken, refreshToken, expiresIn }
+POST /api/auth/refresh   → { accessToken, refreshToken }  body: { refreshToken }
+POST /api/auth/logout    → revokes refresh token
+```
 
-### Admin
-- Richer Guards grid: search, status filter, inline edit, CSV export
-- Users & Access: grant/revoke roles live
-- Attendance Review screen for Controllers
+## Capacitor (native Android / iOS)
 
-### Hardening
-- Helmet (CSP in production), rate-limited login, soft deletes
-- Geofence unit tests (`npm test`)
-- Photo size/type limits; audit on uploads
-
-## Quick start
+Config is in `frontend/capacitor.config.ts`  
+App ID: `ug.charteredsecurity.ops360`
 
 ```bash
-# DB
+cd frontend
+npm install
+npm run build
+npx cap add android
+npx cap add ios
+npx cap sync
+npx cap open android   # or ios
+```
+
+See **frontend/CAPACITOR.md** for permissions (camera, location) and build notes.
+
+## Quick start (web)
+
+```bash
+# Database
 createdb charteredops
 psql -d charteredops -f backend/sql/schema.sql
 
 # Backend
-cd backend
-cp .env.example .env
-npm install
-npm run seed
-npm run import-data
-npm test
-npm start
+cd backend && cp .env.example .env && npm install
+npm run seed && npm run import-data && npm test && npm start
 
 # Frontend
-cd frontend
-npm install
-npm run dev
+cd frontend && npm install && npm run dev
 ```
 
 Super Admin: `admin@charteredsecurity.ug` / `Chartered@Admin2026!`
 
-On phone (same Wi-Fi): open `http://<LAN-IP>:5173` → Add to Home Screen.
+## Feature summary
 
-Optional native: Capacitor (`npx cap add android|ios`).
-
-## Key API routes
-
-| Method | Path | Notes |
-|--------|------|--------|
-| POST | /api/auth/login | Public |
-| GET | /api/auth/me | Live permissions |
-| GET | /api/attendance/roster | Expected roster |
-| POST | /api/attendance/submit | Online + geofence |
-| POST | /api/attendance/sync | Offline batch |
-| POST | /api/attendance/:id/confirm | Controller lock |
-| POST | /api/files/photo | Live camera base64 |
-| GET/POST | /api/corrections | Request + review |
-| CRUD | /api/security-guards etc. | Full admin |
+| Area | Status |
+|------|--------|
+| RBAC + live permissions | Done |
+| Full data import | Done |
+| Offline attendance queue | Done |
+| Live camera check-in | Done |
+| Geofence on submit | Done |
+| Controller confirm + corrections | Done |
+| Refresh token rotation | Done |
+| Capacitor config + docs | Done |
 
 Repository: https://github.com/rakidsoba/CSG-ops-360.git

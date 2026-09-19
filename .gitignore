@@ -7,3 +7,9 @@ build/
 coverage/
 .vite/
 backend/uploads/
+frontend/android/.gradle/
+frontend/android/app/build/
+frontend/android/build/
+frontend/ios/App/Pods/
+frontend/ios/DerivedData/
+*.keystore

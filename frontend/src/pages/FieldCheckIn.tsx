@@ -9,6 +9,7 @@ import {
   QueuedAttendance,
 } from '../services/offlineQueue';
 import { SkeletonTable } from '../components/Skeleton';
+import { getCurrentPosition } from '../services/native';
 
 interface RosterItem {
   deployment_id: string;
@@ -92,12 +93,9 @@ export function FieldCheckIn() {
   }, [loadRoster]);
 
   useEffect(() => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
-      () => {},
-      { enableHighAccuracy: true, timeout: 12000 }
-    );
+    getCurrentPosition().then((pos) => {
+      if (pos) setGps(pos);
+    });
   }, []);
 
   const stopCamera = () => {
