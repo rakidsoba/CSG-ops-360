@@ -12,6 +12,7 @@ const deploymentsRoutes = require('./routes/deployments');
 const usersRoutes = require('./routes/users');
 const rolesRoutes = require('./routes/roles');
 const auditRoutes = require('./routes/audit');
+const attendanceRoutes = require('./routes/attendance');
 const healthRoutes = require('./routes/health');
 
 const app = express();
@@ -61,6 +62,7 @@ app.use('/api/deployments', deploymentsRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/roles', rolesRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // 404
 app.use((req, res) => {

@@ -1,98 +1,204 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const NAV_ITEMS = [
-  { path: '/', label: 'Dashboard', permission: null },
+  { path: '/', label: 'Home', permission: null },
+  { path: '/field', label: 'Check-In', permission: 'deployments:read' },
   { path: '/guards', label: 'Guards', permission: 'guards:read' },
-  { path: '/sites', label: 'Client Sites', permission: 'sites:read' },
+  { path: '/sites', label: 'Sites', permission: 'sites:read' },
   { path: '/deployments', label: 'Deployments', permission: 'deployments:read' },
-  { path: '/shifts', label: 'Shifts', permission: 'shifts:read' },
-  { path: '/users', label: 'Users & Access', permission: 'users:read' },
-  { path: '/roles', label: 'Roles', permission: 'roles:read' },
-  { path: '/audit', label: 'Audit Log', permission: 'audit:read' },
+  { path: '/users', label: 'Users', permission: 'users:read' },
+  { path: '/audit', label: 'Audit', permission: 'audit:read' },
 ];
 
 export function Layout() {
   const { user, logout, can } = useAuth();
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const visibleNav = NAV_ITEMS.filter((item) => !item.permission || can(item.permission));
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
-      <aside
+    <div style={{ display: 'flex', minHeight: '100vh', flexDirection: 'column' }}>
+      {/* Top bar — always visible, mobile friendly */}
+      <header
         style={{
-          width: 'var(--sidebar-width)',
+          height: 'var(--header-height)',
           background: 'var(--color-primary)',
           color: '#fff',
           display: 'flex',
-          flexDirection: 'column',
-          flexShrink: 0,
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0 12px',
+          position: 'sticky',
+          top: 0,
+          zIndex: 50,
         }}
       >
-        <div style={{ padding: '20px 16px', borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-          <div style={{ fontWeight: 700, fontSize: 16, letterSpacing: 0.3 }}>CharteredOps 360</div>
-          <div style={{ fontSize: 12, opacity: 0.75, marginTop: 4 }}>Workforce Operations</div>
-        </div>
-        <nav style={{ flex: 1, padding: '12px 8px' }}>
-          {visibleNav.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/'}
-              style={({ isActive }) => ({
-                display: 'block',
-                padding: '10px 12px',
-                borderRadius: 'var(--radius-sm)',
-                marginBottom: 2,
-                color: isActive ? 'var(--color-primary)' : 'rgba(255,255,255,0.9)',
-                background: isActive ? 'var(--color-highlight)' : 'transparent',
-                fontWeight: isActive ? 600 : 400,
-                fontSize: 14,
-              })}
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
-        <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.12)', fontSize: 13 }}>
-          <div style={{ fontWeight: 600 }}>{user?.fullName}</div>
-          <div style={{ opacity: 0.7, marginTop: 2 }}>{user?.roles?.join(', ')}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <button
-            onClick={logout}
+            className="mobile-only"
+            onClick={() => setMenuOpen((o) => !o)}
             style={{
-              marginTop: 12,
-              width: '100%',
-              padding: '8px 12px',
               background: 'transparent',
               border: '1px solid rgba(255,255,255,0.3)',
               color: '#fff',
-              borderRadius: 'var(--radius-sm)',
+              padding: '6px 10px',
+              borderRadius: 4,
+              minHeight: 36,
               cursor: 'pointer',
+            }}
+            aria-label="Menu"
+          >
+            Menu
+          </button>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 15 }}>CharteredOps 360</div>
+            <div style={{ fontSize: 11, opacity: 0.75 }} className="desktop-only">Workforce Operations</div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, textAlign: 'right' }}>
+          <div style={{ fontWeight: 600 }}>{user?.fullName?.split(' ')[0]}</div>
+          <button
+            onClick={logout}
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'rgba(255,255,255,0.85)',
+              cursor: 'pointer',
+              fontSize: 11,
+              padding: 0,
             }}
           >
             Sign out
           </button>
         </div>
-      </aside>
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-        <header
+      </header>
+
+      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
+        {/* Desktop sidebar */}
+        <aside
+          className="desktop-only"
           style={{
-            height: 'var(--header-height)',
-            background: 'var(--color-surface)',
-            borderBottom: '1px solid var(--color-border)',
+            width: 'var(--sidebar-width)',
+            background: 'var(--color-primary)',
+            color: '#fff',
             display: 'flex',
-            alignItems: 'center',
-            padding: '0 24px',
-            boxShadow: 'var(--shadow-sm)',
+            flexDirection: 'column',
+            flexShrink: 0,
           }}
         >
-          <div style={{ fontWeight: 600, color: 'var(--color-primary)' }}>Operations Console</div>
-        </header>
-        <div style={{ flex: 1, padding: 24, overflow: 'auto' }}>
+          <nav style={{ flex: 1, padding: '12px 8px' }}>
+            {visibleNav.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.path === '/'}
+                style={({ isActive }) => ({
+                  display: 'block',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: 2,
+                  color: isActive ? 'var(--color-primary)' : 'rgba(255,255,255,0.9)',
+                  background: isActive ? 'var(--color-highlight)' : 'transparent',
+                  fontWeight: isActive ? 600 : 400,
+                  fontSize: 14,
+                })}
+              >
+                {item.label}
+              </NavLink>
+            ))}
+          </nav>
+          <div style={{ padding: 16, borderTop: '1px solid rgba(255,255,255,0.12)', fontSize: 13 }}>
+            <div style={{ opacity: 0.7 }}>{user?.roles?.join(', ')}</div>
+          </div>
+        </aside>
+
+        {/* Mobile slide-down menu */}
+        {menuOpen && (
+          <div
+            className="mobile-only"
+            style={{
+              position: 'fixed',
+              top: 'var(--header-height)',
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.4)',
+              zIndex: 40,
+            }}
+            onClick={() => setMenuOpen(false)}
+          >
+            <nav
+              style={{
+                background: 'var(--color-primary)',
+                padding: 12,
+                maxHeight: '70vh',
+                overflow: 'auto',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {visibleNav.map((item) => (
+                <NavLink
+                  key={item.path}
+                  to={item.path}
+                  end={item.path === '/'}
+                  onClick={() => setMenuOpen(false)}
+                  style={({ isActive }) => ({
+                    display: 'block',
+                    padding: '14px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    marginBottom: 2,
+                    color: isActive ? 'var(--color-primary)' : '#fff',
+                    background: isActive ? 'var(--color-highlight)' : 'transparent',
+                    fontWeight: isActive ? 600 : 400,
+                    fontSize: 15,
+                  })}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        )}
+
+        <main style={{ flex: 1, overflow: 'auto', minWidth: 0 }}>
           <Outlet />
-        </div>
-      </main>
+        </main>
+      </div>
+
+      {/* Mobile bottom quick nav for field users */}
+      <nav
+        className="mobile-only"
+        style={{
+          display: 'flex',
+          background: 'var(--color-surface)',
+          borderTop: '1px solid var(--color-border)',
+          paddingBottom: 'var(--safe-bottom)',
+          position: 'sticky',
+          bottom: 0,
+          zIndex: 30,
+        }}
+      >
+        {visibleNav.slice(0, 4).map((item) => (
+          <NavLink
+            key={item.path}
+            to={item.path}
+            end={item.path === '/'}
+            style={({ isActive }) => ({
+              flex: 1,
+              textAlign: 'center',
+              padding: '10px 4px',
+              fontSize: 12,
+              fontWeight: isActive ? 700 : 400,
+              color: isActive ? 'var(--color-accent)' : 'var(--color-text-muted)',
+              minHeight: 'var(--touch-min)',
+            })}
+          >
+            {item.label}
+          </NavLink>
+        ))}
+      </nav>
     </div>
   );
 }

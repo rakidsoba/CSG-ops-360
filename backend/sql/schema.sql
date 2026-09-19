@@ -200,3 +200,118 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 
 CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
 
+
+-- ============================================================
+-- PHASE 2: ATTENDANCE & FIELD CHECK-IN
+-- ============================================================
+
+-- Attendance records (derived from deployments + supervisor exceptions)
+CREATE TABLE IF NOT EXISTS attendance_records (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    deployment_id   UUID REFERENCES deployments(id),
+    guard_id        UUID NOT NULL REFERENCES security_guards(id),
+    site_id         UUID NOT NULL REFERENCES client_sites(id),
+    shift_id        UUID NOT NULL REFERENCES shifts(id),
+    attendance_date DATE NOT NULL,
+    status          VARCHAR(30) NOT NULL DEFAULT 'present'
+                    CHECK (status IN ('present', 'absent', 'late', 'redeployed', 'replaced', 'deserted', 'resigned', 'on_leave')),
+    notes           TEXT,
+    -- Offline-first timing
+    captured_at     TIMESTAMPTZ NOT NULL,          -- device local time of capture (operational truth)
+    synced_at       TIMESTAMPTZ,                  -- when server received it
+    confirmed_at    TIMESTAMPTZ,                  -- Controller lock time
+    confirmed_by    UUID REFERENCES users(id),
+    is_locked       BOOLEAN NOT NULL DEFAULT false,
+    submitted_by    UUID REFERENCES users(id),    -- supervisor
+    client_event_id VARCHAR(100),                 -- for offline dedup
+    latitude        DECIMAL(10, 7),
+    longitude       DECIMAL(10, 7),
+    gps_accuracy_m  DECIMAL(8, 2),
+    photo_file_id   UUID,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (guard_id, site_id, shift_id, attendance_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records(attendance_date);
+CREATE INDEX IF NOT EXISTS idx_attendance_site ON attendance_records(site_id, attendance_date);
+CREATE INDEX IF NOT EXISTS idx_attendance_guard ON attendance_records(guard_id, attendance_date);
+CREATE INDEX IF NOT EXISTS idx_attendance_locked ON attendance_records(is_locked);
+
+-- Guard PIN confirmations (separate for audit)
+CREATE TABLE IF NOT EXISTS guard_pin_confirmations (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    attendance_id   UUID NOT NULL REFERENCES attendance_records(id) ON DELETE CASCADE,
+    guard_id        UUID NOT NULL REFERENCES security_guards(id),
+    confirmed       BOOLEAN NOT NULL,
+    captured_at     TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Correction requests (Phase 2)
+CREATE TABLE IF NOT EXISTS correction_requests (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    attendance_id   UUID NOT NULL REFERENCES attendance_records(id),
+    requested_by    UUID NOT NULL REFERENCES users(id),
+    reason          TEXT NOT NULL,
+    proposed_status VARCHAR(30) NOT NULL,
+    proposed_notes  TEXT,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'approved', 'rejected')),
+    reviewed_by     UUID REFERENCES users(id),
+    reviewed_at     TIMESTAMPTZ,
+    review_notes    TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Offline sync outbox (server-side)
+CREATE TABLE IF NOT EXISTS sync_events (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    client_event_id VARCHAR(100) NOT NULL,
+    user_id         UUID NOT NULL REFERENCES users(id),
+    event_type      VARCHAR(50) NOT NULL,
+    payload         JSONB NOT NULL,
+    status          VARCHAR(20) NOT NULL DEFAULT 'accepted'
+                    CHECK (status IN ('accepted', 'rejected', 'duplicate')),
+    result_ref      UUID,
+    error_message   TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, client_event_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sync_events_user ON sync_events(user_id, created_at DESC);
+
+-- System settings
+CREATE TABLE IF NOT EXISTS system_settings (
+    key             VARCHAR(100) PRIMARY KEY,
+    value           TEXT NOT NULL,
+    description     TEXT,
+    updated_by      UUID REFERENCES users(id),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO system_settings (key, value, description) VALUES
+    ('default_geofence_radius_m', '150', 'Default geofence radius in metres'),
+    ('require_photo_on_checkin', 'true', 'Mandatory live photo on check-in'),
+    ('require_gps_on_checkin', 'true', 'Mandatory GPS on check-in'),
+    ('max_gps_accuracy_m', '100', 'Warn if GPS accuracy worse than this'),
+    ('offline_sync_batch_size', '50', 'Max events per sync batch')
+ON CONFLICT (key) DO NOTHING;
+
+-- Stored files metadata (photos live in object storage / local later)
+CREATE TABLE IF NOT EXISTS stored_files (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    original_name   VARCHAR(255),
+    storage_path    TEXT NOT NULL,
+    public_url      TEXT,
+    mime_type       VARCHAR(100),
+    size_bytes      INTEGER,
+    entity_type     VARCHAR(50),
+    entity_id       UUID,
+    uploaded_by     UUID REFERENCES users(id),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_stored_files_entity ON stored_files(entity_type, entity_id);
+

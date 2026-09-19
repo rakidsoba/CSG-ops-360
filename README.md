@@ -1,30 +1,40 @@
 # CharteredOps 360
 
 **Security Workforce Operations Management Platform**  
-For Chartered Security (Kampala, Uganda)
+Chartered Security (Kampala, Uganda)
 
-Production-grade Phase 1 foundation with strong backend-enforced security, permission-gated UI, audit trail, and design system using company colors (#380101, #d50000, #ffd702).
+Mobile-first PWA (Android + iOS browsers + installable) with full web admin console.
 
-## Architecture
+## Stack
 
-- **Backend**: Node.js + Express + PostgreSQL  
-  - JWT authentication (12h), bcrypt (12 rounds)  
-  - Permissions re-resolved from database on every request  
-  - Account lockout after 5 failed logins  
-  - Soft deletes, append-only immutable audit log  
-  - Super Admin has unrestricted access to all tables via API and UI  
+- Backend: Node.js + Express + PostgreSQL
+- Frontend: React + TypeScript + Vite (PWA)
+- Offline: IndexedDB queue + Service Worker
+- Auth: JWT, live permission resolution, account lockout, immutable audit
 
-- **Frontend**: React + TypeScript + Vite  
-  - Permission-driven navigation (unpermitted screens are invisible)  
-  - Skeleton loaders on all data views  
-  - Semantic company colors, no decorative gradients, no emojis  
-  - Ready for PWA / offline field capture (Phase 2)
+Company colours: `#380101` · `#d50000` · `#ffd702`  
+Skeleton loaders · no decorative gradients · no emojis  
+Super Admin has unrestricted control of all tables from the UI.
+
+## Features delivered
+
+### Phase 1 + data
+- Auth, RBAC (resource:action), soft deletes, audit trail
+- Guard registry, client sites, shifts, deployments
+- Full import script for existing operational data (`npm run import-data`)
+- Super Admin Users & Access (grant/revoke roles live)
+
+### Phase 2 foundation (offline attendance)
+- Deployment-driven expected roster
+- Supervisor Field Check-In (mobile optimised)
+- Exception-only marking (present / absent / late / redeployed / …)
+- Offline queue (IndexedDB) — works on poor networks
+- `captured_at` (device time) vs `synced_at` (server time)
+- GPS capture when available
+- Batch sync endpoint `/api/attendance/sync`
+- PWA installable on Android and iOS (Add to Home Screen)
 
 ## Quick start
-
-### Prerequisites
-- Node.js 18+
-- PostgreSQL 16
 
 ### Database
 ```bash
@@ -35,48 +45,63 @@ psql -d charteredops -f backend/sql/schema.sql
 ### Backend
 ```bash
 cd backend
-cp .env.example .env   # edit JWT_SECRET and DATABASE_URL
+cp .env.example .env   # set DATABASE_URL and a strong JWT_SECRET
 npm install
-npm run seed           # creates roles, permissions, Super Admin
-npm start              # port 4000
+npm run seed
+npm run import-data    # imports guards + sites from artifacts/database/seed_data.sql
+npm start              # :4000
 ```
 
 Default Super Admin:
 - Email: `admin@charteredsecurity.ug`
 - Password: `Chartered@Admin2026!`
 
-### Frontend
+### Frontend (mobile + web)
 ```bash
 cd frontend
 npm install
-npm run dev            # port 5173
+npm run dev            # :5173 — works on phone browsers via LAN IP
 ```
 
-## Security highlights
+On a phone on the same network, open `http://<your-computer-ip>:5173`.  
+Use **Add to Home Screen** for an app-like experience on Android and iOS.
 
-1. Backend is the sole security boundary. UI hiding is convenience only.
-2. Token does not carry permissions; every request reloads roles + permissions from DB.
-3. Super Admin bypass is enforced both in permission resolution and in guards.
-4. Audit log is append-only (database trigger blocks UPDATE/DELETE).
-5. Soft-delete only on operational tables.
-6. Rate limiting on login endpoint + account lockout.
+### Native wrappers (optional)
+The same PWA can be packaged with Capacitor for Play Store / App Store:
 
-## Permission model
+```bash
+npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios
+npx cap init CharteredOps com.charteredsecurity.ops
+npx cap add android
+npx cap add ios
+npx cap sync
+```
 
-Codes follow `resource:action` (e.g. `guards:create`, `deployments:update`).
+## Security model (summary)
 
-Roles: Super Admin, Director, HR, Operations Officer, Controller, Supervisor.
+- Backend is the only security boundary
+- Permissions re-resolved from DB on every request
+- Super Admin always has full permission set
+- Soft deletes; audit log is immutable (DB trigger)
+- Offline events deduplicated by `client_event_id`
 
-Super Admin can grant extra roles to any user from the Users & Access screen; the change is live on the next `/auth/me` call.
+## API highlights
 
-## Offline (Phase 2 design)
+| Endpoint | Purpose |
+|----------|---------|
+| POST /api/auth/login | Authenticate |
+| GET /api/auth/me | Live roles + permissions |
+| GET /api/attendance/roster?date= | Expected roster from deployments |
+| POST /api/attendance/submit | Online attendance |
+| POST /api/attendance/sync | Offline batch sync |
+| CRUD /api/security-guards, client-sites, deployments, users… | Full admin surface |
 
-- Supervisor field app will be a PWA.
-- Capture timestamp (`captured_at`) is stored on device; sync timestamp is separate.
-- IndexedDB queue for attendance exceptions when offline.
-- Deployment record remains the source of truth for expected roster.
+## Roadmap remaining
 
-## Repository
+- Live camera photo capture + object storage
+- Controller confirmation & correction requests UI
+- Geofence validation on submit
+- Richer Super Admin data grids (inline edit, export)
+- Further hardening (CSP, refresh tokens, penetration review)
 
-https://github.com/rakidsoba/CSG-ops-360.git
-
+Repository: https://github.com/rakidsoba/CSG-ops-360.git
