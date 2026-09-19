@@ -10,6 +10,7 @@ import { Deployments } from './pages/Deployments';
 import { Users } from './pages/Users';
 import { Audit } from './pages/Audit';
 import { FieldCheckIn } from './pages/FieldCheckIn';
+import { AttendanceReview } from './pages/AttendanceReview';
 import { SkeletonTable } from './components/Skeleton';
 
 function Protected({ children, permission }: { children: React.ReactNode; permission?: string }) {
@@ -49,6 +50,7 @@ function AppRoutes() {
       >
         <Route index element={<Dashboard />} />
         <Route path="field" element={<Protected permission="deployments:read"><FieldCheckIn /></Protected>} />
+        <Route path="review" element={<Protected permission="deployments:read"><AttendanceReview /></Protected>} />
         <Route path="guards" element={<Protected permission="guards:read"><Guards /></Protected>} />
         <Route path="sites" element={<Protected permission="sites:read"><Sites /></Protected>} />
         <Route path="deployments" element={<Protected permission="deployments:read"><Deployments /></Protected>} />

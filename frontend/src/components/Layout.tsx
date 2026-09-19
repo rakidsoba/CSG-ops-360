@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 const NAV_ITEMS = [
   { path: '/', label: 'Home', permission: null },
   { path: '/field', label: 'Check-In', permission: 'deployments:read' },
+  { path: '/review', label: 'Review', permission: 'deployments:read' },
   { path: '/guards', label: 'Guards', permission: 'guards:read' },
   { path: '/sites', label: 'Sites', permission: 'sites:read' },
   { path: '/deployments', label: 'Deployments', permission: 'deployments:read' },

@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const path = require('path');
 const cors = require('cors');
 const helmet = require('helmet');
 const db = require('./config/db');
@@ -14,14 +15,17 @@ const rolesRoutes = require('./routes/roles');
 const auditRoutes = require('./routes/audit');
 const attendanceRoutes = require('./routes/attendance');
 const healthRoutes = require('./routes/health');
+const filesRoutes = require('./routes/files');
+const correctionsRoutes = require('./routes/corrections');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
 // Security headers
 app.use(helmet({
-  contentSecurityPolicy: false, // allow frontend separate origin in dev
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? undefined : false,
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
 
 app.use(cors({
@@ -31,7 +35,8 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization'],
 }));
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '4mb' }));
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use(express.urlencoded({ extended: false }));
 
 // Simple in-memory rate limit (per IP) for login
@@ -63,6 +68,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/roles', rolesRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/attendance', attendanceRoutes);
+app.use('/api/files', filesRoutes);
+app.use('/api/corrections', correctionsRoutes);
 
 // 404
 app.use((req, res) => {

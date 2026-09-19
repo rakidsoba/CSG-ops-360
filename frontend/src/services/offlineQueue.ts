@@ -21,6 +21,7 @@ export interface QueuedAttendance {
   longitude?: number;
   gps_accuracy_m?: number;
   pin_confirmed?: boolean;
+  photo_file_id?: string;
   created_local: string;
 }
 

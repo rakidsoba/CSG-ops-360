@@ -3,105 +3,73 @@
 **Security Workforce Operations Management Platform**  
 Chartered Security (Kampala, Uganda)
 
-Mobile-first PWA (Android + iOS browsers + installable) with full web admin console.
+Mobile-first PWA (Android + iOS + web). Company colours `#380101` · `#d50000` · `#ffd702`. Skeleton loaders. Super Admin has full table control from the UI.
 
-## Stack
+## What is included
 
-- Backend: Node.js + Express + PostgreSQL
-- Frontend: React + TypeScript + Vite (PWA)
-- Offline: IndexedDB queue + Service Worker
-- Auth: JWT, live permission resolution, account lockout, immutable audit
+### Foundation
+- JWT auth, live permission resolution, account lockout, immutable audit
+- Guards, sites, shifts, deployments, users, roles
+- Full data import from operational seed (`npm run import-data`)
 
-Company colours: `#380101` · `#d50000` · `#ffd702`  
-Skeleton loaders · no decorative gradients · no emojis  
-Super Admin has unrestricted control of all tables from the UI.
+### Field attendance (Phase 2)
+- Deployment-driven roster
+- Exception-only check-in (mobile optimised)
+- **Live camera only** (no gallery) → stored as file metadata, binary on disk
+- GPS + **geofence enforcement** when site coordinates exist
+- Offline IndexedDB queue + sync (`captured_at` vs `synced_at`)
+- Controller **confirm/lock** and **correction request / approve / reject**
 
-## Features delivered
+### Admin
+- Richer Guards grid: search, status filter, inline edit, CSV export
+- Users & Access: grant/revoke roles live
+- Attendance Review screen for Controllers
 
-### Phase 1 + data
-- Auth, RBAC (resource:action), soft deletes, audit trail
-- Guard registry, client sites, shifts, deployments
-- Full import script for existing operational data (`npm run import-data`)
-- Super Admin Users & Access (grant/revoke roles live)
-
-### Phase 2 foundation (offline attendance)
-- Deployment-driven expected roster
-- Supervisor Field Check-In (mobile optimised)
-- Exception-only marking (present / absent / late / redeployed / …)
-- Offline queue (IndexedDB) — works on poor networks
-- `captured_at` (device time) vs `synced_at` (server time)
-- GPS capture when available
-- Batch sync endpoint `/api/attendance/sync`
-- PWA installable on Android and iOS (Add to Home Screen)
+### Hardening
+- Helmet (CSP in production), rate-limited login, soft deletes
+- Geofence unit tests (`npm test`)
+- Photo size/type limits; audit on uploads
 
 ## Quick start
 
-### Database
 ```bash
+# DB
 createdb charteredops
 psql -d charteredops -f backend/sql/schema.sql
-```
 
-### Backend
-```bash
+# Backend
 cd backend
-cp .env.example .env   # set DATABASE_URL and a strong JWT_SECRET
+cp .env.example .env
 npm install
 npm run seed
-npm run import-data    # imports guards + sites from artifacts/database/seed_data.sql
-npm start              # :4000
-```
+npm run import-data
+npm test
+npm start
 
-Default Super Admin:
-- Email: `admin@charteredsecurity.ug`
-- Password: `Chartered@Admin2026!`
-
-### Frontend (mobile + web)
-```bash
+# Frontend
 cd frontend
 npm install
-npm run dev            # :5173 — works on phone browsers via LAN IP
+npm run dev
 ```
 
-On a phone on the same network, open `http://<your-computer-ip>:5173`.  
-Use **Add to Home Screen** for an app-like experience on Android and iOS.
+Super Admin: `admin@charteredsecurity.ug` / `Chartered@Admin2026!`
 
-### Native wrappers (optional)
-The same PWA can be packaged with Capacitor for Play Store / App Store:
+On phone (same Wi-Fi): open `http://<LAN-IP>:5173` → Add to Home Screen.
 
-```bash
-npm install @capacitor/core @capacitor/cli @capacitor/android @capacitor/ios
-npx cap init CharteredOps com.charteredsecurity.ops
-npx cap add android
-npx cap add ios
-npx cap sync
-```
+Optional native: Capacitor (`npx cap add android|ios`).
 
-## Security model (summary)
+## Key API routes
 
-- Backend is the only security boundary
-- Permissions re-resolved from DB on every request
-- Super Admin always has full permission set
-- Soft deletes; audit log is immutable (DB trigger)
-- Offline events deduplicated by `client_event_id`
-
-## API highlights
-
-| Endpoint | Purpose |
-|----------|---------|
-| POST /api/auth/login | Authenticate |
-| GET /api/auth/me | Live roles + permissions |
-| GET /api/attendance/roster?date= | Expected roster from deployments |
-| POST /api/attendance/submit | Online attendance |
-| POST /api/attendance/sync | Offline batch sync |
-| CRUD /api/security-guards, client-sites, deployments, users… | Full admin surface |
-
-## Roadmap remaining
-
-- Live camera photo capture + object storage
-- Controller confirmation & correction requests UI
-- Geofence validation on submit
-- Richer Super Admin data grids (inline edit, export)
-- Further hardening (CSP, refresh tokens, penetration review)
+| Method | Path | Notes |
+|--------|------|--------|
+| POST | /api/auth/login | Public |
+| GET | /api/auth/me | Live permissions |
+| GET | /api/attendance/roster | Expected roster |
+| POST | /api/attendance/submit | Online + geofence |
+| POST | /api/attendance/sync | Offline batch |
+| POST | /api/attendance/:id/confirm | Controller lock |
+| POST | /api/files/photo | Live camera base64 |
+| GET/POST | /api/corrections | Request + review |
+| CRUD | /api/security-guards etc. | Full admin |
 
 Repository: https://github.com/rakidsoba/CSG-ops-360.git

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -48,8 +48,11 @@ export function FieldCheckIn() {
   const [queueCount, setQueueCount] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState('');
-  const [edits, setEdits] = useState<Record<string, { status: string; notes: string }>>({});
+  const [edits, setEdits] = useState<Record<string, { status: string; notes: string; photoDataUrl?: string; photoFileId?: string }>>({});
   const [gps, setGps] = useState<{ lat: number; lng: number; accuracy: number } | null>(null);
+  const [cameraFor, setCameraFor] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const refreshQueueCount = useCallback(async () => {
     const q = await getQueuedAttendance();
@@ -65,7 +68,7 @@ export function FieldCheckIn() {
       setOffline(false);
     } catch {
       setOffline(true);
-      setMessage('Offline — showing last known data if available. Changes will queue.');
+      setMessage('Offline — changes will queue on this device.');
     } finally {
       setLoading(false);
       refreshQueueCount();
@@ -84,6 +87,7 @@ export function FieldCheckIn() {
     return () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
+      stopCamera();
     };
   }, [loadRoster]);
 
@@ -92,9 +96,72 @@ export function FieldCheckIn() {
     navigator.geolocation.getCurrentPosition(
       (pos) => setGps({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
       () => {},
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 12000 }
     );
   }, []);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
+    setCameraFor(null);
+  };
+
+  const startCamera = async (deploymentId: string) => {
+    stopCamera();
+    setCameraFor(deploymentId);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play();
+      }
+    } catch {
+      setMessage('Camera permission denied or unavailable. Photo is optional when offline.');
+      setCameraFor(null);
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !cameraFor) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.72);
+    setEdits((prev) => ({
+      ...prev,
+      [cameraFor]: {
+        status: prev[cameraFor]?.status || 'present',
+        notes: prev[cameraFor]?.notes || '',
+        photoDataUrl: dataUrl,
+      },
+    }));
+    stopCamera();
+  };
+
+  const uploadPhotoIfNeeded = async (edit: { photoDataUrl?: string; photoFileId?: string }) => {
+    if (edit.photoFileId) return edit.photoFileId;
+    if (!edit.photoDataUrl || !navigator.onLine) return undefined;
+    try {
+      const res = await api.post<{ id: string }>('/files/photo', {
+        dataUrl: edit.photoDataUrl,
+        entity_type: 'attendance',
+        original_name: `checkin_${Date.now()}.jpg`,
+      });
+      return res.id;
+    } catch {
+      return undefined;
+    }
+  };
 
   const flushAndReload = async () => {
     setSyncing(true);
@@ -119,6 +186,8 @@ export function FieldCheckIn() {
       [key]: {
         status: prev[key]?.status || 'present',
         notes: prev[key]?.notes || '',
+        photoDataUrl: prev[key]?.photoDataUrl,
+        photoFileId: prev[key]?.photoFileId,
         [field]: value,
       },
     }));
@@ -128,7 +197,9 @@ export function FieldCheckIn() {
     const key = item.deployment_id;
     const edit = edits[key] || { status: 'present', notes: '' };
     const client_event_id = newClientEventId();
-    const payload: QueuedAttendance = {
+    const photo_file_id = await uploadPhotoIfNeeded(edit);
+
+    const payload: QueuedAttendance & { photo_file_id?: string } = {
       client_event_id,
       deployment_id: item.deployment_id,
       guard_id: item.guard_id,
@@ -143,6 +214,7 @@ export function FieldCheckIn() {
       gps_accuracy_m: gps?.accuracy,
       pin_confirmed: edit.status === 'present',
       created_local: new Date().toISOString(),
+      photo_file_id,
     };
 
     if (!navigator.onLine) {
@@ -153,10 +225,22 @@ export function FieldCheckIn() {
     }
 
     try {
-      await api.post('/attendance/submit', { records: [payload] });
-      setMessage(`Recorded: ${item.guard_name} — ${edit.status}`);
-      loadRoster();
-    } catch {
+      const res = await api.post<{ results: { status: string; error?: string; geofence?: { distance_m?: number } }[] }>(
+        '/attendance/submit',
+        { records: [payload] }
+      );
+      const r = res.results?.[0];
+      if (r?.status === 'rejected') {
+        setMessage(r.error || 'Rejected by server');
+      } else {
+        const dist = r?.geofence?.distance_m;
+        setMessage(
+          `Recorded: ${item.guard_name} — ${edit.status}` +
+            (dist != null ? ` (${dist}m from site)` : '')
+        );
+        loadRoster();
+      }
+    } catch (err: any) {
       await enqueueAttendance(payload);
       setMessage(`Network issue — queued offline: ${item.guard_name}`);
       refreshQueueCount();
@@ -170,7 +254,6 @@ export function FieldCheckIn() {
         setEdits((prev) => ({ ...prev, [item.deployment_id]: { status: 'present', notes: '' } }));
       }
     }
-    // sequential to keep UI simple on low-end devices
     for (const item of unmarked) {
       await submitOne(item);
     }
@@ -184,7 +267,7 @@ export function FieldCheckIn() {
     <div className="page">
       <h1 className="page-title">Field Check-In</h1>
       <p className="page-sub">
-        Roster from active deployments. Mark exceptions only — unmarked = present after save.
+        Roster from active deployments. Live camera only (no gallery). Geofence enforced when site GPS is set.
       </p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12, alignItems: 'center' }}>
@@ -195,9 +278,7 @@ export function FieldCheckIn() {
           value={date}
           onChange={(e) => setDate(e.target.value)}
         />
-        <button className="btn btn-secondary" onClick={loadRoster} disabled={loading}>
-          Refresh
-        </button>
+        <button className="btn btn-secondary" onClick={loadRoster} disabled={loading}>Refresh</button>
         {queueCount > 0 && (
           <button className="btn btn-primary" onClick={flushAndReload} disabled={syncing || offline}>
             {syncing ? 'Syncing…' : `Sync ${queueCount} offline`}
@@ -226,7 +307,31 @@ export function FieldCheckIn() {
       )}
 
       {message && (
-        <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-success)' }}>{message}</div>
+        <div style={{ marginBottom: 12, fontSize: 13, color: 'var(--color-text)' }}>{message}</div>
+      )}
+
+      {/* Live camera overlay */}
+      {cameraFor && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: '#000',
+            zIndex: 100,
+            display: 'flex',
+            flexDirection: 'column',
+          }}
+        >
+          <video ref={videoRef} playsInline muted style={{ flex: 1, width: '100%', objectFit: 'cover' }} />
+          <div style={{ display: 'flex', gap: 12, padding: 16, paddingBottom: 'calc(16px + var(--safe-bottom))' }}>
+            <button className="btn btn-ghost" style={{ flex: 1, color: '#fff', borderColor: '#fff' }} onClick={stopCamera}>
+              Cancel
+            </button>
+            <button className="btn btn-primary" style={{ flex: 1 }} onClick={capturePhoto}>
+              Capture
+            </button>
+          </div>
+        </div>
       )}
 
       {loading ? (
@@ -237,17 +342,14 @@ export function FieldCheckIn() {
         </div>
       ) : (
         <>
-          <button
-            className="btn btn-primary"
-            style={{ width: '100%', marginBottom: 12 }}
-            onClick={submitAllPresent}
-          >
+          <button className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }} onClick={submitAllPresent}>
             Mark all remaining as Present
           </button>
           {roster.map((item) => {
             const key = item.deployment_id;
             const currentStatus = edits[key]?.status || item.attendance_status || 'present';
             const locked = !!item.is_locked;
+            const hasPhoto = !!edits[key]?.photoDataUrl || !!edits[key]?.photoFileId;
             return (
               <div key={key} className="card">
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
@@ -293,13 +395,30 @@ export function FieldCheckIn() {
                       value={edits[key]?.notes || ''}
                       onChange={(e) => setEdit(key, 'notes', e.target.value)}
                     />
-                    <button
-                      className="btn btn-secondary"
-                      style={{ width: '100%' }}
-                      onClick={() => submitOne(item)}
-                    >
-                      Save
-                    </button>
+                    {edits[key]?.photoDataUrl && (
+                      <img
+                        src={edits[key].photoDataUrl}
+                        alt="Capture"
+                        style={{ width: '100%', maxHeight: 160, objectFit: 'cover', borderRadius: 6, marginBottom: 8 }}
+                      />
+                    )}
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn-ghost"
+                        style={{ flex: 1 }}
+                        onClick={() => startCamera(key)}
+                      >
+                        {hasPhoto ? 'Retake photo' : 'Live photo'}
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        style={{ flex: 1 }}
+                        onClick={() => submitOne(item)}
+                      >
+                        Save
+                      </button>
+                    </div>
                   </>
                 )}
               </div>
